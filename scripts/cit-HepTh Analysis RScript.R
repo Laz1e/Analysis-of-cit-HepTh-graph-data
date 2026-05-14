@@ -16,3 +16,9 @@ dates <- read.table("./data/cit-HepTh-dates.txt.gz", col.names = c("PaperId", "D
 # Extracting abstracts into a seperate folder
 untar("./data/cit-HepTh-abstracts.tar.gz", exdir = "abstract_data")
 
+citations <- read.delim("./data/cit-HepTh.txt.gz", skip = 4, header = FALSE)
+dates <- read.delim("./data/cit-HepTh-dates.txt.gz",skip = 1, header = F)
+
+names(citations) <- c("From", "To")
+names(dates) <- c("PaperId", "dates")
+

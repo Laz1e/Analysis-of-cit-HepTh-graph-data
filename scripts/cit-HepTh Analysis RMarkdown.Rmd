@@ -9,22 +9,107 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
+# EDA of cit-HepTh dataset
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+```{r imports}
 
-```{r cars}
-summary(cars)
+library(tidyverse)
+library(igraph)
+library(ggplot2)
+library(igraph)
+
 ```
 
-## Including Plots
+```{r loading data}
 
-You can also embed plots, for example:
+citations <- read.delim("./data/cit-HepTh.txt.gz", skip = 4, header = FALSE)
+dates <- read.delim("./data/cit-HepTh-dates.txt.gz",skip = 1, header = F)
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+names(citations) <- c("From", "To")
+names(dates) <- c("PaperId", "dates")
+
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+## Basic data structure
+
+
+```{r null check, echo=FALSE}
+
+sum(is.na(citations$From))
+sum(is.na(citations$To))
+
+```
+
+```{r uniques}
+papers_from <- unique(citations$From)
+paper_to <- unique(citations$To)
+
+cat("uniques in From column: ", length(papers_from) , "\n")
+cat("uniques in To column: ", length(paper_to) , "\n")
+cat("overall uniques: ",length(unique(c(citations$From, citations$To))))
+
+```
+
+```{r cross listed}
+# head(dates, n = 10)
+
+crosslisted_in_dates <- dates %>%
+  filter(grepl("^11", PaperId)) %>%
+  nrow()
+
+cat("crosslisted in dates: ", crosslisted_in_dates, "\n")
+
+crosslisted_in_citations <- citations %>%
+  filter(grepl("^11", From) | grepl("^11", To)) %>%
+  nrow()
+
+cat("crosslisted in citations: ", crosslisted_in_citations, "\n")
+
+```
+
+
+## Degree distribution
+
+```{r basic graph stats}
+
+g <- graph_from_data_frame(citations, directed = TRUE)
+
+cat("Nodes: ", vcount(g), "\n")
+cat("Edges: ", ecount(g), "\n")
+cat("density: ", edge_density(g), "\n")
+cat("connected: ", is_connected(g), "\n")
+cat("components: ", components(g)$no, "\n")
+
+
+```
+
+```{r degree distribution}
+
+in_degrees <- degree(g, mode = "in")
+out_degrees <- degree(g, mode = "out")
+
+cat("In-degree stats:\n")
+print(summary(in_degrees))
+
+cat("Out-degree stats:\n")
+print(summary(out_degrees))
+
+```
+
+## Removing duplicate vertices
+
+``` {r duplicate vertices}
+
+cat("duplicate vertices: ", sum(duplicated(citations)), "\n")
+
+cat("self loops: ", sum(citations$From == citations$To), "\n")
+
+```
+
+```{r graph plot}
+
+g <- graph_from_data_frame(citations, directed = TRUE, vertices = dates)
+print(g)
+
+```
