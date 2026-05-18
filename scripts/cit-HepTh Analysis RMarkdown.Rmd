@@ -17,7 +17,6 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(igraph)
 library(ggplot2)
-library(igraph)
 
 ```
 
@@ -89,6 +88,9 @@ cat("components: ", components(g)$no, "\n")
 in_degrees <- degree(g, mode = "in")
 out_degrees <- degree(g, mode = "out")
 
+V(g)$in_degree <- in_degrees
+V(g)$out_degree <- out_degrees
+
 cat("In-degree stats:\n")
 print(summary(in_degrees))
 
@@ -97,19 +99,83 @@ print(summary(out_degrees))
 
 ```
 
+
+```{r}
+indegree_distribution <- table(in_degrees) / length(in_degrees)
+
+mean_deg_in <- round(mean(in_degrees), 2)
+median_deg_in <- median(in_degrees)
+
+indegree_data <- data.frame(
+  degree = as.numeric(names(indegree_distribution)),
+  frequency = as.numeric(indegree_distribution)
+)
+
+ggplot(indegree_data, aes(x = degree, y = frequency)) + 
+  geom_point(alpha = 0.7) + 
+  geom_line(linewidth = 0.2) + 
+  geom_vline(xintercept = mean_deg_in, colour = "blue", linewidth = 0.5) +
+  geom_vline(xintercept = median_deg_in, colour = "red", linewidth = 0.5) +
+  annotate("text", x = mean_deg_in, y = 0.17,
+  label = paste("mean in-degree =", mean_deg_in),
+  colour = "blue", hjust = -0.1) +
+  annotate("text", x = mean_deg_in, y = 0.20,
+  label = paste("median in-degree =", median_deg_in),
+  colour = "red", hjust = -0.1) +
+  labs(x = "In-Degree", y = "Frequency",
+  title = "In-Degree Distribution") +
+  theme_minimal()
+
+
+```
+
+
 ## Removing duplicate vertices
 
 ``` {r duplicate vertices}
 
-cat("duplicate vertices: ", sum(duplicated(citations)), "\n")
+cat("duplicate vertices citations: ", sum(duplicated(citations)), "\n")
+cat("duplicate vertices dates: ", sum(duplicated(dates)), "\n")
 
-cat("self loops: ", sum(citations$From == citations$To), "\n")
+cat("self loops citations: ", sum(citations$From == citations$To), "\n")
+
 
 ```
+
+```{r duplicates in dates}
+
+duplicate_rows <- dates %>% 
+  group_by(PaperId) %>%
+  filter(n() > 1) %>% 
+  select(PaperId)
+
+print(duplicate_rows)
+
+```
+
+```{r removing duplicates}
+
+dates_clean <- dates %>%
+  distinct(PaperId, .keep_all = TRUE)
+
+citations_clean <- citations %>% 
+  filter(From %in% dates_clean$PaperId & To %in% dates_clean$PaperId)
+
+```
+
 
 ```{r graph plot}
 
-g <- graph_from_data_frame(citations, directed = TRUE, vertices = dates)
+g <- graph_from_data_frame(citations_clean, directed = TRUE, vertices = dates_clean)
 print(g)
 
 ```
+
+
+```{r}
+
+plot(g, layout = layout.kamada.kawai)
+
+```
+
+
