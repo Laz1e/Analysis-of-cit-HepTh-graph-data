@@ -11,14 +11,16 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # EDA of cit-HepTh dataset
 
-
 ```{r imports}
 
 library(tidyverse)
 library(igraph)
 library(ggplot2)
+library(dplyr)
+library(kableExtra)
 
 ```
+
 
 ```{r loading data}
 
@@ -30,8 +32,8 @@ names(dates) <- c("PaperId", "dates")
 
 ```
 
-## Basic data structure
 
+## Basic data structure
 
 ```{r null check, echo=FALSE}
 
@@ -67,91 +69,7 @@ cat("crosslisted in citations: ", crosslisted_in_citations, "\n")
 
 ```
 
-
-## Degree distribution
-
-```{r basic graph stats}
-
-g <- graph_from_data_frame(citations, directed = TRUE)
-
-cat("Nodes: ", vcount(g), "\n")
-cat("Edges: ", ecount(g), "\n")
-cat("density: ", edge_density(g), "\n")
-cat("connected: ", is_connected(g), "\n")
-cat("components: ", components(g)$no, "\n")
-
-
-```
-
-```{r degree distribution}
-
-in_degrees <- degree(g, mode = "in")
-out_degrees <- degree(g, mode = "out")
-
-V(g)$in_degree <- in_degrees
-V(g)$out_degree <- out_degrees
-
-cat("In-degree stats:\n")
-print(summary(in_degrees))
-
-cat("Out-degree stats:\n")
-print(summary(out_degrees))
-
-```
-
-
-```{r}
-indegree_distribution <- table(in_degrees) / length(in_degrees)
-
-mean_deg_in <- round(mean(in_degrees), 2)
-median_deg_in <- median(in_degrees)
-
-indegree_data <- data.frame(
-  degree = as.numeric(names(indegree_distribution)),
-  frequency = as.numeric(indegree_distribution)
-)
-
-ggplot(indegree_data, aes(x = degree, y = frequency)) + 
-  geom_point(alpha = 0.7) + 
-  geom_line(linewidth = 0.2) + 
-  geom_vline(xintercept = mean_deg_in, colour = "blue", linewidth = 0.5) +
-  geom_vline(xintercept = median_deg_in, colour = "red", linewidth = 0.5) +
-  annotate("text", x = mean_deg_in, y = 0.17,
-  label = paste("mean in-degree =", mean_deg_in),
-  colour = "blue", hjust = -0.1) +
-  annotate("text", x = mean_deg_in, y = 0.20,
-  label = paste("median in-degree =", median_deg_in),
-  colour = "red", hjust = -0.1) +
-  labs(x = "In-Degree", y = "Frequency",
-  title = "In-Degree Distribution") +
-  theme_minimal()
-
-
-```
-
-
 ## Removing duplicate vertices
-
-``` {r duplicate vertices}
-
-cat("duplicate vertices citations: ", sum(duplicated(citations)), "\n")
-cat("duplicate vertices dates: ", sum(duplicated(dates)), "\n")
-
-cat("self loops citations: ", sum(citations$From == citations$To), "\n")
-
-
-```
-
-```{r duplicates in dates}
-
-duplicate_rows <- dates %>% 
-  group_by(PaperId) %>%
-  filter(n() > 1) %>% 
-  select(PaperId)
-
-print(duplicate_rows)
-
-```
 
 ```{r removing duplicates}
 
@@ -164,18 +82,358 @@ citations_clean <- citations %>%
 ```
 
 
-```{r graph plot}
+## Degree distribution
 
-g <- graph_from_data_frame(citations_clean, directed = TRUE, vertices = dates_clean)
-print(g)
+```{r basic graph stats}
 
+g <- graph_from_data_frame(citations_clean, 
+                           directed = TRUE, 
+                           vertices = dates_clean)
+
+#Basic properties
+n_vertices <- vcount(g)
+n_edges <- ecount(g)
+density <- edge_density(g)
+connectivity <- is_connected(g)
+
+#Degree 
+in_degree <- degree(g, mode = "in")
+out_degree <- degree(g, mode = "out")
+
+in_degree_stats <- list(
+  mean = mean(in_degree),
+  median = median(in_degree),
+  sd = sd(in_degree),
+  min = min(in_degree),
+  max = max(in_degree),
+  q1 = quantile(in_degree, 0.25),
+  q3 = quantile(in_degree, 0.75)
+)
+
+out_degree_stats <- list(
+  mean = mean(out_degree),
+  median = median(out_degree),
+  sd = sd(out_degree),
+  min = min(out_degree),
+  max = max(out_degree),
+  q1 = quantile(out_degree, 0.25),
+  q3 = quantile(out_degree, 0.75)
+)
+
+#Top nodes
+top_in <- which(in_degree == max(in_degree))
+top_out <- which(out_degree == max(out_degree))
+
+#In-degree/Out-degree ratio
+deg_ratio <- ifelse(out_degree == 0, in_degree, in_degree/out_degree)
+
+#Betweenness centrality
+betweennes_vals <- betweenness(g, directed = TRUE, weights = NA)
+
+#Component Analysis
+scc <- components(g, mode = "strong")
+scc_size <- scc$csize
+scc_nodes <- scc$no
+
+wcc <- components(g, mode = "weak")
+wcc_size <- wcc$csize
+wcc_nodes <- wcc$no
+
+
+#Clustering coefficient
+clustering_coeff <- transitivity(g, type = "local", isolates = "zero")
+
+
+```
+
+
+```{r summary table}
+
+network_summary <- data.frame(
+  Category = c(
+    
+    # Basic Properties
+    "Basic Property",
+    "Basic Property",
+    "Basic Property",
+    "Basic Property",
+    
+    # In-Degree Statistics
+    "In-Degree",
+    "In-Degree",
+    "In-Degree",
+    "In-Degree",
+    "In-Degree",
+    "In-Degree",
+    "In-Degree",
+    
+    # Out-Degree Statistics
+    "Out-Degree",
+    "Out-Degree",
+    "Out-Degree",
+    "Out-Degree",
+    "Out-Degree",
+    "Out-Degree",
+    "Out-Degree",
+    
+    # Top Nodes
+    "Top Nodes",
+    "Top Nodes",
+    
+    # Degree Ratio
+    "Degree Ratio",
+    "Degree Ratio",
+    "Degree Ratio",
+    "Degree Ratio",
+    "Degree Ratio",
+    
+    # Betweenness
+    "Betweenness",
+    "Betweenness",
+    "Betweenness",
+    "Betweenness",
+    "Betweenness",
+    
+    # Components
+    "Component Analysis",
+    "Component Analysis",
+    "Component Analysis",
+    "Component Analysis",
+    
+    # Clustering
+    "Clustering",
+    "Clustering",
+    "Clustering"
+  ),
+  
+  Metric = c(
+    
+    # Basic Properties
+    "Number of Vertices",
+    "Number of Edges",
+    "Network Density",
+    "Connected Graph",
+    
+    # In-Degree
+    "Mean In-Degree",
+    "Median In-Degree",
+    "SD In-Degree",
+    "Min In-Degree",
+    "Max In-Degree",
+    "Q1 In-Degree",
+    "Q3 In-Degree",
+    
+    # Out-Degree
+    "Mean Out-Degree",
+    "Median Out-Degree",
+    "SD Out-Degree",
+    "Min Out-Degree",
+    "Max Out-Degree",
+    "Q1 Out-Degree",
+    "Q3 Out-Degree",
+    
+    # Top Nodes
+    "Top In-Degree Node",
+    "Top Out-Degree Node",
+    
+    # Degree Ratio
+    "Mean Degree Ratio",
+    "Median Degree Ratio",
+    "SD Degree Ratio",
+    "Min Degree Ratio",
+    "Max Degree Ratio",
+    
+    # Betweenness
+    "Mean Betweenness",
+    "Median Betweenness",
+    "SD Betweenness",
+    "Min Betweenness",
+    "Max Betweenness",
+    
+    # Components
+    "Total Nodes in SCC",
+    "Largest SCC Size",
+    "Total Nodes in WCC",
+    "Largest WCC Size",
+    
+    # Clustering
+    "Mean Clustering Coefficient",
+    "Median Clustering Coefficient",
+    "Max Clustering Coefficient"
+  ),
+  
+  Value = c(
+    
+    # Basic Properties
+    n_vertices,
+    n_edges,
+    round(density, 6),
+    connectivity,
+    
+    # In-Degree
+    round(in_degree_stats$mean, 2),
+    round(in_degree_stats$median, 2),
+    round(in_degree_stats$sd, 2),
+    in_degree_stats$min,
+    in_degree_stats$max,
+    round(in_degree_stats$q1, 2),
+    round(in_degree_stats$q3, 2),
+    
+    # Out-Degree
+    round(out_degree_stats$mean, 2),
+    round(out_degree_stats$median, 2),
+    round(out_degree_stats$sd, 2),
+    out_degree_stats$min,
+    out_degree_stats$max,
+    round(out_degree_stats$q1, 2),
+    round(out_degree_stats$q3, 2),
+    
+    # Top Nodes
+    V(g)$name[top_in],
+    V(g)$name[top_out],
+    
+    # Degree Ratio
+    round(mean(deg_ratio), 2),
+    round(median(deg_ratio), 2),
+    round(sd(deg_ratio), 2),
+    round(min(deg_ratio), 2),
+    round(max(deg_ratio), 2),
+    
+    # Betweenness
+    round(mean(betweennes_vals), 2),
+    round(median(betweennes_vals), 2),
+    round(sd(betweennes_vals), 2),
+    round(min(betweennes_vals), 2),
+    round(max(betweennes_vals), 2),
+    
+    # Components
+    scc_nodes,
+    max(scc_size),
+    wcc_nodes,
+    max(wcc_size),
+    
+    # Clustering
+    round(mean(clustering_coeff), 4),
+    round(median(clustering_coeff), 4),
+    round(max(clustering_coeff), 4)
+  )
+)
+
+# =========================
+# DISPLAY TABLE
+# =========================
+
+kable(
+  network_summary,
+  caption = "Complete Network Analysis Summary",
+  align = c("l", "l", "c")
+) %>%
+  kable_styling(
+    full_width = FALSE,
+    bootstrap_options = c("striped", "hover", "condensed")
+  )
+
+```
+
+
+```{r in-degree distribution}
+indegree_distribution <- table(in_degree) / length(in_degree)
+
+mean_deg_in <- round(mean(in_degree), 2)
+median_deg_in <- median(in_degree)
+
+indegree_data <- data.frame(
+  degree = as.numeric(names(indegree_distribution)),
+  frequency = as.numeric(indegree_distribution)
+)
+
+ggplot(indegree_data, aes(x = degree, y = frequency)) + 
+  geom_point(alpha = 0.7) + 
+  geom_line(linewidth = 0.2) + 
+  geom_vline(xintercept = mean_deg_in, colour = "blue", linewidth = 0.5) +
+  geom_vline(xintercept = median_deg_in, colour = "red", linewidth = 0.5) +
+  scale_x_log10() + 
+  annotate("text", x = mean_deg_in, y = 0.17,
+  label = paste("mean in-degree =", mean_deg_in),
+  colour = "blue", hjust = -0.1) +
+  annotate("text", x = mean_deg_in, y = 0.20,
+  label = paste("median in-degree =", median_deg_in),
+  colour = "red", hjust = -0.1) +
+  labs(x = "In-Degree Log Scale", y = "Frequency",
+  title = "In-Degree Distribution") +
+  theme_minimal()
+
+
+```
+
+
+```{r out-degree distribution}
+outdegree_distribution <- table(out_degree) / length(out_degree)
+
+mean_deg_out <- round(mean(out_degree), 2)
+median_deg_out <- median(out_degree)
+
+outdegree_data <- data.frame(
+  degree = as.numeric(names(outdegree_distribution)),
+  frequency = as.numeric(outdegree_distribution)
+)
+
+ggplot(outdegree_data, aes(x = degree, y = frequency)) + 
+  geom_point(alpha = 0.7) + 
+  geom_line(linewidth = 0.2) + 
+  geom_vline(xintercept = mean_deg_out, colour = "blue", linewidth = 0.5) +
+  geom_vline(xintercept = median_deg_out, colour = "red", linewidth = 0.5) +
+  scale_x_log10() + 
+  annotate("text", x = mean_deg_out, y = 0.17,
+  label = paste("mean out-degree =", mean_deg_out),
+  colour = "blue", hjust = -0.1) +
+  annotate("text", x = mean_deg_out, y = 0.20,
+  label = paste("median out-degree =", median_deg_out),
+  colour = "red", hjust = -0.1) +
+  labs(x = "Out-Degree Log Scale", y = "Frequency",
+  title = "Out-Degree Distribution") +
+  theme_minimal()
+
+
+```
+
+
+
+```{r hubs}
+
+plot(out_degree, in_degree,
+     log = "xy",
+     pch = 16,
+     col = "steelblue")
+
+
+# Highlight hubs
+hubs <- which(in_degree > quantile(in_degree, 0.95) &
+              out_degree > quantile(out_degree, 0.95))
+if(length(hubs) > 0) {
+  points(out_degree[hubs], in_degree[hubs],
+         pch = 16, col = "red", cex = 1.5)
+  legend("topleft", c("Regular", "Hub"), col = c("steelblue", "red"), pch = 16)
+}
 ```
 
 
 ```{r}
-
-plot(g, layout = layout.kamada.kawai)
-
+# PLOT 4: In-Degree vs Betweenness (Log-Log)
+plot(in_degree, betweennes_vals,
+     main = "In-Degree vs Betweenness (Log Scale)",
+     xlab = "In-Degree",
+     ylab = "Betweenness Centrality",
+     pch = 16, col = rgb(0.4, 0.6, 0.2, 0.3),
+     log = "xy", cex = 0.5)
 ```
+
+
+
+
+
+
+
+
 
 
