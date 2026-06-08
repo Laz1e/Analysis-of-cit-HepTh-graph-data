@@ -42,15 +42,7 @@ sum(is.na(citations$To))
 
 ```
 
-```{r uniques}
-papers_from <- unique(citations$From)
-paper_to <- unique(citations$To)
 
-cat("uniques in From column: ", length(papers_from) , "\n")
-cat("uniques in To column: ", length(paper_to) , "\n")
-cat("overall uniques: ",length(unique(c(citations$From, citations$To))))
-
-```
 
 ```{r cross listed}
 # head(dates, n = 10)
@@ -69,14 +61,94 @@ cat("crosslisted in citations: ", crosslisted_in_citations, "\n")
 
 ```
 
+## Stripping 11 from cross reference Paper IDs
+
+```{r}
+dates <- dates %>% mutate(PaperId = as.character(PaperId))
+citations <- citations %>% mutate(From = as.character(From), To = as.character(To))
+
+dates_normalized <- dates %>% 
+  mutate(PaperId = ifelse(nchar(PaperId) == 9 & substr(PaperId, 1, 2) == "11", substr(PaperId, 3, 9), PaperId))
+
+citations_normalized <- citations %>% 
+  mutate(
+    From = ifelse(nchar(From) == 9 & substr(From, 1, 2) == "11", substr(From, 3, 9), From),
+    To = ifelse(nchar(To) == 9 & substr(To, 1, 2) == "11", substr(To, 3, 9), To)
+  )
+
+print(dates_normalized %>% filter(nchar(PaperId) == 9) %>% sum())
+print(citations_normalized %>% filter(nchar(From) == 9) %>% sum())
+print(citations_normalized %>% filter(nchar(To) == 9) %>% sum())
+```
+
+
+```{r}
+
+print(dates_normalized %>% filter(duplicated(PaperId)) %>% head(n = 10))
+
+```
+
+```{r}
+
+
+dates_clean2 <- dates_normalized %>% filter(PaperId %in% unique(c(citations_normalized$From, citations_normalized$To))) %>%
+  distinct(PaperId, .keep_all = TRUE) %>% mutate()
+
+
+```
+
+
+```{r}
+
+library(dplyr)
+
+# 1. Force everything to character format to guarantee a fair comparison
+edges_nodes <- unique(c(as.character(citations_normalized$From), as.character(citations_normalized$To)))
+vertices_nodes <- as.character(dates_clean2$PaperId)
+
+# 2. Find the exact elements in the edges that do NOT exist in your clean vertices list
+problem_nodes <- setdiff(edges_nodes, vertices_nodes)
+
+# 3. Print the diagnostic summary
+cat("--- TARGETED GRAPH MATCHING DIAGNOSTIC ---\n")
+cat("Total unique nodes found in your edge links: ", length(edges_nodes), "\n")
+cat("Total unique nodes found in dates_clean2:    ", length(vertices_nodes), "\n")
+cat("Number of offending nodes causing the crash:  ", length(problem_nodes), "\n\n")
+
+if(length(problem_nodes) > 0) {
+  cat("The first 20 offending IDs are:\n")
+  print(head(problem_nodes, 30))
+}
+
+```
+
+
+## The code in the RScript file shows the total paper ids which have discrepancies
+
+
+
+
+```{r}
+
+g_temp <- graph_from_data_frame(citations_normalized, 
+                           directed = TRUE, 
+                           vertices = dates_clean2)
+
+```
+
+
+
+
 ## Removing duplicate vertices
 
-```{r removing duplicates}
+Not working on cross referenced papers for now, hence the drop is understandable. 
 
-dates_clean <- dates %>%
+```{r removing duplicates }
+
+dates_clean <- dates_normalized %>%
   distinct(PaperId, .keep_all = TRUE)
 
-citations_clean <- citations %>% 
+citations_clean <- citations_normalized %>% 
   filter(From %in% dates_clean$PaperId & To %in% dates_clean$PaperId)
 
 ```
@@ -84,9 +156,11 @@ citations_clean <- citations %>%
 
 ## Degree distribution
 
+
+
 ```{r basic graph stats}
 
-g <- graph_from_data_frame(citations_clean, 
+g <- graph_from_data_frame(citations_normalized, 
                            directed = TRUE, 
                            vertices = dates_clean)
 
@@ -418,7 +492,7 @@ if(length(hubs) > 0) {
 ```
 
 
-```{r}
+```{r in-degree vs betweenness}
 # PLOT 4: In-Degree vs Betweenness (Log-Log)
 plot(in_degree, betweennes_vals,
      main = "In-Degree vs Betweenness (Log Scale)",
@@ -430,10 +504,84 @@ plot(in_degree, betweennes_vals,
 
 
 
+```{r average path length}
+
+avg_path_length <- mean_distance(g, directed = TRUE, unconnected = TRUE)
+cat("Average Path Length: ", round(avg_path_length, 4), "\n")
+
+```
 
 
+## Yearly Slicing 
+
+```{r slicing}
 
 
+V(g)$year <- as.numeric(substr(V(g)$dates, 1, 4))
 
+yearspan <- 1992:2003
+
+results <- list()
+
+for(current_year in yearspan){
+  
+  active_nodes <- V(g)[year <= current_year & !is.na(year)]
+  
+  # louvain checking 
+  if(length(active_nodes) < 10) next
+  
+  sub_g <- induced_subgraph(g, active_nodes)
+  sub_g <- simplify(sub_g)
+  
+  if (ecount(sub_g) < 20) next
+  
+  undirected_sub_g <- as.undirected(sub_g, mode = "collapse")
+  
+  louvain_clusters <- cluster_louvain(undirected_sub_g)
+  node_memberships <- membership(louvain_clusters)
+  
+  #OSLOM checking
+  
+  total_nodes <- vcount(undirected_sub_g)
+  bridge_count <- 0
+  
+  for (node_idx in 1:total_nodes){
+    
+    local_neighbours <- neighbors(undirected_sub_g, node_idx, mode = "all")
+    if(length(local_neighbours) < 3) next
+    
+    neighbour_comms <- node_memberships[local_neighbours]
+    assigned_comms <- node_memberships[node_idx]
+    
+    internal_links <- sum(neighbour_comms == assigned_comms)
+    external_links <- sum(neighbour_comms != assigned_comms)
+    
+    if(external_links / (internal_links + external_links) < 0.35){
+      bridge_count <- bridge_count + 1
+    }
+    
+  }
+  
+  results[[as.character(current_year)]] <- tibble(
+    Snapshot_Year = current_year,
+    Cumulative_Nodes = total_nodes,
+    Cumulative_Edges = ecount(sub_g),
+    Detected_Clusters = length(louvain_clusters),
+    Modularity_Score  = modularity(louvain_clusters),
+    Bridge_Nodes_Count = bridge_count,
+    Pct_Bridge_Nodes   = (bridge_count / total_nodes) * 100
+  )
+  
+}
+
+
+```
+
+
+```{r}
+
+kable(results)
+
+```
 
 

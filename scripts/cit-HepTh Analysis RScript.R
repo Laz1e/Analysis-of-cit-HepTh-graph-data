@@ -7,12 +7,6 @@ readLines("./data/cit-HepTh-dates.txt.gz", n = 50)
 # nodes and edges file
 readLines("./data/cit-HepTh.txt.gz", n = 50)
 
-# Loading the citation network
-citations <- read.table("./data/cit-HepTh.txt.gz", comment.char = "#", col.names = c("From", "To"))
-
-# Loading the publication dates
-dates <- read.table("./data/cit-HepTh-dates.txt.gz", col.names = c("PaperId", "Dates"))
-
 # Extracting abstracts into a seperate folder
 untar("./data/cit-HepTh-abstracts.tar.gz", exdir = "abstract_data")
 
@@ -22,3 +16,41 @@ dates <- read.delim("./data/cit-HepTh-dates.txt.gz",skip = 1, header = F)
 names(citations) <- c("From", "To")
 names(dates) <- c("PaperId", "dates")
 
+
+################################################################################################
+# Script which checks how many paper metadata is present in abstract folder.
+
+# 1. Define the path to your main abstracts directory
+# (R handles subdirectories automatically if we set recursive = TRUE)
+abs_dir <- "abstract_data/" 
+
+# 2. List all files ending in .abs across all subfolders
+all_abs_files <- list.files(path = abs_dir, 
+                            pattern = "\\.abs$", 
+                            recursive = TRUE, 
+                            full.names = FALSE)
+
+# 3. Clean the file names to get raw Paper IDs
+# This extracts just the filename (e.g., "9503122") regardless of what year-folder it is in
+abs_paper_ids <- tools::file_path_sans_ext(basename(all_abs_files))
+abs_paper_ids <- unique(as.character(abs_paper_ids))
+
+# 4. Use your existing code to get the 16,329 problem nodes
+all_edge_nodes <- unique(c(as.character(citations_normalized$From), as.character(citations_normalized$To)))
+vertices_nodes <- as.character(dates_clean2$PaperId)
+problem_nodes <- setdiff(all_edge_nodes, vertices_nodes)
+
+# 5. CROSS-REFERENCE: How many problem nodes actually exist in the abs folder?
+found_in_abs <- intersect(problem_nodes, abs_paper_ids)
+still_missing_completely <- setdiff(problem_nodes, abs_paper_ids)
+
+# 6. Print the Audit Summary
+cat("--- ABSTRACT FOLDER AUDIT RESULTS ---\n")
+cat("Total offending nodes causing the crash:       ", length(problem_nodes), "\n")
+cat("Nodes successfully FOUND in the .abs folders:  ", length(found_in_abs), "\n")
+cat("Nodes completely missing from files and folders: ", length(still_missing_completely), "\n\n")
+
+if(length(found_in_abs) > 0) {
+  cat("Sample of problem nodes verified to exist as .abs files:\n")
+  print(head(found_in_abs, 10))
+}
