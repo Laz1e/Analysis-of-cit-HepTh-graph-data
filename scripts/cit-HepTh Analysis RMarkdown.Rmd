@@ -24,11 +24,22 @@ library(kableExtra)
 
 ```{r loading data}
 
-citations <- read.delim("./data/cit-HepTh.txt.gz", skip = 4, header = FALSE)
-dates <- read.delim("./data/cit-HepTh-dates.txt.gz",skip = 1, header = F)
+dates <- read.csv("./data/hep-th-slacdates.tar.gz",
+                      sep = "",
+                      header = F,
+                      skip = 1,
+                      colClasses = c("character", "character"))
+
+names(dates) <- c("paperId", "date")
+
+citations <- read.csv("./data/hep-th-citations.tar.gz",
+                  sep = "", 
+                  header = F,
+                  skip = 1,
+                  colClasses = c("character", "character"))
 
 names(citations) <- c("From", "To")
-names(dates) <- c("PaperId", "dates")
+
 
 ```
 
@@ -48,7 +59,7 @@ sum(is.na(citations$To))
 # head(dates, n = 10)
 
 crosslisted_in_dates <- dates %>%
-  filter(grepl("^11", PaperId)) %>%
+  filter(grepl("^11", paperId)) %>%
   nrow()
 
 cat("crosslisted in dates: ", crosslisted_in_dates, "\n")
@@ -61,50 +72,13 @@ cat("crosslisted in citations: ", crosslisted_in_citations, "\n")
 
 ```
 
-## Stripping 11 from cross reference Paper IDs
-
-```{r}
-dates <- dates %>% mutate(PaperId = as.character(PaperId))
-citations <- citations %>% mutate(From = as.character(From), To = as.character(To))
-
-dates_normalized <- dates %>% 
-  mutate(PaperId = ifelse(nchar(PaperId) == 9 & substr(PaperId, 1, 2) == "11", substr(PaperId, 3, 9), PaperId))
-
-citations_normalized <- citations %>% 
-  mutate(
-    From = ifelse(nchar(From) == 9 & substr(From, 1, 2) == "11", substr(From, 3, 9), From),
-    To = ifelse(nchar(To) == 9 & substr(To, 1, 2) == "11", substr(To, 3, 9), To)
-  )
-
-print(dates_normalized %>% filter(nchar(PaperId) == 9) %>% sum())
-print(citations_normalized %>% filter(nchar(From) == 9) %>% sum())
-print(citations_normalized %>% filter(nchar(To) == 9) %>% sum())
-```
 
 
 ```{r}
-
-print(dates_normalized %>% filter(duplicated(PaperId)) %>% head(n = 10))
-
-```
-
-```{r}
-
-
-dates_clean2 <- dates_normalized %>% filter(PaperId %in% unique(c(citations_normalized$From, citations_normalized$To))) %>%
-  distinct(PaperId, .keep_all = TRUE) %>% mutate()
-
-
-```
-
-
-```{r}
-
-library(dplyr)
 
 # 1. Force everything to character format to guarantee a fair comparison
-edges_nodes <- unique(c(as.character(citations_normalized$From), as.character(citations_normalized$To)))
-vertices_nodes <- as.character(dates_clean2$PaperId)
+edges_nodes <- unique(c(as.character(citations$From), as.character(citations$To)))
+vertices_nodes <- as.character(dates$paperId)
 
 # 2. Find the exact elements in the edges that do NOT exist in your clean vertices list
 problem_nodes <- setdiff(edges_nodes, vertices_nodes)

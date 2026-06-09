@@ -1,20 +1,22 @@
-#abstract file
-readLines("./data/cit-HepTh-abstracts.tar.gz", n = 50)
-
-#dates file
-readLines("./data/cit-HepTh-dates.txt.gz", n = 50)
-
-# nodes and edges file
-readLines("./data/cit-HepTh.txt.gz", n = 50)
-
 # Extracting abstracts into a seperate folder
 untar("./data/cit-HepTh-abstracts.tar.gz", exdir = "abstract_data")
 
-citations <- read.delim("./data/cit-HepTh.txt.gz", skip = 4, header = FALSE)
-dates <- read.delim("./data/cit-HepTh-dates.txt.gz",skip = 1, header = F)
+dates <- read.csv("./data/hep-th-slacdates.tar.gz",
+                  sep = "",
+                  header = F,
+                  skip = 1,
+                  colClasses = c("character", "character"))
+
+names(dates) <- c("paperId", "date")
+
+citations <- read.csv("./data/hep-th-citations.tar.gz",
+                      sep = "", 
+                      header = F,
+                      skip = 1,
+                      colClasses = c("character", "character"))
 
 names(citations) <- c("From", "To")
-names(dates) <- c("PaperId", "dates")
+
 
 
 ################################################################################################
@@ -36,7 +38,7 @@ abs_paper_ids <- tools::file_path_sans_ext(basename(all_abs_files))
 abs_paper_ids <- unique(as.character(abs_paper_ids))
 
 # 4. Use your existing code to get the 16,329 problem nodes
-all_edge_nodes <- unique(c(as.character(citations_normalized$From), as.character(citations_normalized$To)))
+all_edge_nodes <- unique(c(as.character(citations$From), as.character(citations$To)))
 vertices_nodes <- as.character(dates_clean2$PaperId)
 problem_nodes <- setdiff(all_edge_nodes, vertices_nodes)
 
@@ -54,3 +56,4 @@ if(length(found_in_abs) > 0) {
   cat("Sample of problem nodes verified to exist as .abs files:\n")
   print(head(found_in_abs, 10))
 }
+
